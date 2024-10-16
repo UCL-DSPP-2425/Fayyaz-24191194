@@ -21,7 +21,7 @@ str(countypres)
 # Variable names 
 names(countypres)
 
-# Foucs on the 2020 election data
+# Filter the dataset to just focus on the 2020 election data
 countypres_2020 <- countypres %>% 
 filter(year == 2020) # will filter the data to only include the 2020 election data
 
@@ -30,10 +30,11 @@ state_results <- countypres_2020 %>% # Create a new dataframe for state results
     group_by(state, party, candidate) %>% # Group by state, party and candidate
     summarise(candidate_votes = sum(candidatevotes, na.rm = TRUE)) # We are summing up the candidate votes in each state 
 
+
 # Total Votes for each state 
 state_total_votes <- countypres_2020 %>% 
     group_by(state) %>% 
-    summarise(total_votes = sum(candidatevotes, na.rm = TRUE))
+    summarise(total_state_votes = sum(candidatevotes, na.rm = TRUE))
 
 # Merge the two dataframes
 state_results <- state_results %>% 
@@ -41,13 +42,34 @@ state_results <- state_results %>%
 
 # Party vote share
 state_results <- state_results %>% 
-    mutate(party_vote_share = candidate_votes * 100 / total_votes)
+    mutate(party_vote_share = candidate_votes * 100 / total_state_votes)
 
 # Winning candidate in each state 
-state_results <- state_results %>% 
+state_winners <- state_results %>% 
     group_by(state) %>% 
     filter(candidate_votes == max(candidate_votes)) %>% 
     select(state, party, candidate, candidate_votes, party_vote_share)
+
+
+# Find some interesting insights from the data frames 
+# State with the highest voter turnout
+state_with_highest_turnout <- state_total_votes %>% 
+    filter(total_state_votes == max(total_state_votes))
+
+print(state_with_highest_turnout) # California has the highest voter turnout in the 2020 election
+
+# State with the highest Republican vote share
+republican_share <- state_results %>% 
+    filter(party == "REPUBLICAN") %>%
+    arrange(desc(party_vote_share))
+
+print(republican_share) # Wyoming has the highest Republican vote share in the 2020 election with 62.03%
+tail(republican_share) # The state with the lowest Republican vote share District of Columbia with 5.39%
+
+# State with the highest Democratic vote share
+democrat_share <- state_results %>% 
+    filter(party == "DEMOCRAT") %>%
+    arrange(desc(party_vote_share))
 
 # 2 
 # State-Level Visulisation 
@@ -56,12 +78,12 @@ state_results <- state_results %>%
 us_map <- map_data("state")
 
 # Prepare state_results for merging with map data
-state_results <- state_results %>%
+state_winners <- state_winners %>%
     mutate(region = tolower(state))
 
 # Merge map data with state results
 map_data <- us_map %>%
-    left_join(state_results, by = "region")
+    left_join(state_winners, by = "region")
 
 # Plot the map
 
@@ -71,8 +93,8 @@ state_centroids <- map_data %>%
     summarize(long = mean(long), lat = mean(lat))
 
 # Plot the map
-ggplot(map_data, aes(x = long, y = lat, group = group, fill = party)) +
-    geom_polygon(color = "black") +
+p <- ggplot(map_data, aes(x = long, y = lat, group = group, fill = party)) +
+    geom_polygon(color = "white") +
     scale_fill_manual(values = c("DEMOCRAT" = "cornflowerblue", "REPUBLICAN" = "red")) +
     theme_void() +
     labs(title = "2020 US Presidential Election Results by State",
@@ -85,12 +107,15 @@ ggplot(map_data, aes(x = long, y = lat, group = group, fill = party)) +
     geom_text(data = state_centroids,
               aes(x = long, y = lat, label = state),
               inherit.aes = FALSE,  # Avoid inheriting global aesthetics like `group`
-              color = "black", size = 4, fontface = "bold") +
+              color = "black", size = 3, fontface = "bold") +
     coord_fixed(ratio = 1.5)  # Adjust the ratio to make the image wider or taller
+
+# Save the plot
+ggsave("us_election_results.png", p, width = 10, height = 6, units = "in")
 
 
 # Republican Vote Share Map 
-ggplot(map_data, aes(x = long, y = lat, group = group, fill = party_vote_share)) +
+p <- ggplot(map_data, aes(x = long, y = lat, group = group, fill = party_vote_share)) +
     geom_polygon(color = "black") +
     scale_fill_gradient(low = "lightyellow", high = "brown", limits = c(0, 70), name = "Republican Vote Share (%)") +
     theme_void() +
@@ -105,6 +130,9 @@ ggplot(map_data, aes(x = long, y = lat, group = group, fill = party_vote_share))
               inherit.aes = FALSE,  # Avoid inheriting global aesthetics like `group`
               color = "black", size = 4, fontface = "bold") +
     coord_fixed(ratio = 1.5)  # Adjust the ratio to make the image wider or taller
+
+# Save my plot
+ggsave("us_election_republican.png", p, width = 10, height = 6, units = "in")
 
 # 3 County-Level Visulisation (2000-2020)
 # Map out the results from 2000-2020 at county level
@@ -126,7 +154,7 @@ county_map_data <- map_data("county") %>%
     filter(!is.na(party))  # Remove rows with missing party information
 
 # Plot the faceted map
- ggplot(county_map_data, aes(x = long, y = lat, group = group, fill = party)) +
+f <-  ggplot(county_map_data, aes(x = long, y = lat, group = group, fill = party)) +
   geom_polygon(color = "black", size = 0.05) +
   scale_fill_manual(values = c("DEMOCRAT" = "cornflowerblue", "REPUBLICAN" = "red"), na.value = "grey50") +
   theme_void() +
