@@ -1,0 +1,184 @@
+---
+title: "ECON0128 Assignment 2"
+author: "Fayyaz Baig"
+date: "2024-10-23"
+output: pdf_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE)
+# Clear Environments and Load necessary libraries
+rm(list=ls())
+library(tidyverse)
+library(texreg)
+library(DBI)
+library(RPostgres)
+
+```
+
+
+## Frisch Waugh Lovell Theorem
+
+Data Loading
+```{r}
+#We load the dataset from Dropbox.
+# Load dataset from Dropbox
+county_data <- read.csv(paste0("https://www.dropbox.com/scl/fi/lumi2zlvbfcd2qsfnomqh/", 
+"county_data_24.csv?rlkey=0jin81pffu9pohq6vquudbi1b&e=1&dl=1"))
+
+# Check if dataset has loaded correctly
+str(county_data)
+head(county_data)
+names(county_data)
+
+```
+
+## Data Processing
+
+We transform the variable y_hh_med into its logarithmic form.
+
+```{r}
+county_data <- county_data %>% 
+  mutate(log_y_hh_med = log(y_hh_med))
+
+```
+
+
+Multiple Regression
+We perform a multiple regression of rep_share on log_y_hh_med and white_share.
+```{r}
+# Perform a multiple regression of rep_share on log_y_hh_med and white_share
+model_lm <- lm(rep_share ~ log_y_hh_med + white_share, data = county_data)
+
+# Summary of the model
+screenreg(model_lm)
+
+```
+
+## Application of Frisch Waugh Lovell (FWL) Theorem
+We demonstrate the FWL theorem by conducting residual regressions.
+
+```{r}
+# Regress rep_share on white_share 
+model_fwl1 <- lm(rep_share ~ white_share, data = county_data)
+res1 <- model_fwl1$residuals
+
+# Regress log_y_hh_med on white_share
+model_fwl2 <- lm(log_y_hh_med ~ white_share, data = county_data)
+res2 <- model_fwl2$residuals
+
+# Regress the residuals
+model_fwl3 <- lm(res1 ~ res2)
+
+# Display results of both models
+screenreg(list(model_lm, model_fwl3))
+
+```
+
+## Visualizing the FWL Theorem
+We create a scatter plot of the residuals from the two regressions using ggplot2.
+
+```{r}
+# Create a scatter plot of the residuals
+ggplot(aes(x = res2, y = res1), data = county_data) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = "Plot of Residuals",
+         x = "Residuals Model 2",
+         y = "Residuals Model 1") +
+    theme_minimal()
+
+```
+
+The plot demonstrates the FWL theorem by showing the relationship between the two residuals. The slope should be equal to the coefficient of the log_y_hh_med variable in the original model.
+
+## Direct Regression of rep_share on res2
+
+We regress rep_share on res2 to further confirm the FWL theorem.
+
+```{r}
+# Regress rep_share directly with res2
+model_fwl4 <- lm(rep_share ~ res2, data = county_data)
+
+# Display comparison of models
+screenreg(list(model_lm, model_fwl3, model_fwl4))
+
+
+```
+
+## Task 2: Database Interaction
+
+Part 1: Setting Up and Connecting to Database
+First, we install and load the necessary packages to connect to a PostgreSQL database.
+
+```{r}
+# Connect to the Postgres database
+data <- dbConnect(
+  RPostgres::Postgres(),
+  dbname = "movies_database",
+  host = "34.89.96.247",
+  port = "5432",
+  user = "postgres",
+  password = "UCL_ECON_0128"
+)
+
+# Check if the connection has been established
+dbListTables(data)
+dbListFields(data, "movies")
+
+
+```
+
+## Part 2: Querying the Database
+
+Method 1: SQL Queries
+
+We retrieve all records from the ratings table where the rating is 5.
+
+```{r}
+# Get all records from the ratings table where the rating is 5
+ratings_query <- dbSendQuery(data, "SELECT * FROM ratings WHERE rating = 5")
+ratings_results <- dbFetch(ratings_query)
+dbClearResult(ratings_query)
+
+# Display results as a tibble
+ratings_results <- as_tibble(ratings_results)
+
+```
+
+Method 2: Queries with dbplyr
+
+We filter and arrange the ratings table using dbplyr.
+
+```{r}
+# Filter the ratings table for records where the rating is 5 and the timestamp is after January 1, 2016
+ratings <- tbl(data, "ratings")
+
+ratings_filtered <- ratings %>%
+  filter(rating == 5, timestamp > "2016-01-01") %>%
+  arrange(timestamp) %>%
+  collect()
+```
+
+
+Part 3: Working with Multiple Tables
+We rank the top 10 movies according to the number of ratings 4.5 and above in 2007.
+
+```{r}
+# Create a table with the number of ratings 4.5 and above for each movie in 2007
+#movies <- tbl(data, "movies")
+#ratings_movies_merged <- ratings %>%
+#  group_by(movie_id) %>%
+#  summarise(average_rating = mean(rating, na.rm = TRUE), n = as.numeric(n())) %>%
+#  left_join(movies, by = "movie_id")
+
+# Filter and arrange the data
+#top_movies_2007 <- ratings_movies_merged %>%
+#  filter(average_rating >= 4.5, year(timestamp) == 2007) %>%
+#  arrange(desc(n)) %>%
+#  select(movie_id, title, n, average_rating) %>%
+#  head(10)
+
+# Display top 10 movies
+#top_movies_2007
+```
